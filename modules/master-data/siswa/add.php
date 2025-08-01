@@ -1,8 +1,15 @@
 <?php
 /**
- * Form Tambah Siswa
+ * Form Tambah Siswa dengan Pembuatan Akun User Otomatis
  * File: modules/master-data/siswa/add.php
  */
+
+// Debug mode - HAPUS INI SETELAH TESTING
+error_reporting(E_ALL);
+ini_set('display_errors', 1);
+
+// Include database connection (sudah ada session_start di dalamnya)
+require_once '../../../core/config/database.php';
 
 $page_title = 'Tambah Siswa';
 $breadcrumb = [
@@ -11,12 +18,12 @@ $breadcrumb = [
     ['title' => 'Tambah Siswa']
 ];
 
-// Include SMS Core layout
-include '../../../core/includes/header.php';
-
-// Handle form submission
+// Handle form submission SEBELUM include header
 if ($_POST) {
     try {
+        // Start transaction
+        $pdo->beginTransaction();
+        
         // Validation
         $errors = [];
         
@@ -29,6 +36,12 @@ if ($_POST) {
             $check_nis = getOne("SELECT id FROM siswa WHERE nis = ?", [$_POST['nis']]);
             if ($check_nis) {
                 $errors[] = 'NIS sudah digunakan';
+            }
+            
+            // Check if username (NIS) already exists in users table
+            $check_username = getOne("SELECT id FROM users WHERE username = ?", [$_POST['nis']]);
+            if ($check_username) {
+                $errors[] = 'NIS sudah digunakan sebagai username';
             }
         }
         
@@ -44,14 +57,42 @@ if ($_POST) {
         
         if (!empty($_POST['email']) && !filter_var($_POST['email'], FILTER_VALIDATE_EMAIL)) {
             $errors[] = 'Format email tidak valid';
+        } else if (!empty($_POST['email'])) {
+            // Check if email already exists
+            $check_email = getOne("SELECT id FROM users WHERE email = ?", [$_POST['email']]);
+            if ($check_email) {
+                $errors[] = 'Email sudah digunakan';
+            }
         }
         
         if (!empty($_POST['no_hp']) && !preg_match('/^[0-9+\-\s()]{10,15}$/', $_POST['no_hp'])) {
             $errors[] = 'Format nomor HP tidak valid';
         }
         
+        // Password validation (optional, will be auto-generated if empty)
+        $auto_password = '';
+        if (empty($_POST['password'])) {
+            // Generate default password: nama depan + NIS (4 digit terakhir)
+            $nama_parts = explode(' ', trim($_POST['nama']));
+            $nama_depan = strtolower($nama_parts[0]);
+            $nis_suffix = substr($_POST['nis'], -4);
+            $auto_password = $nama_depan . $nis_suffix;
+        } else {
+            if (strlen($_POST['password']) < 6) {
+                $errors[] = 'Password minimal 6 karakter';
+            }
+            $auto_password = $_POST['password'];
+        }
+        
         if (empty($errors)) {
-            $data = [
+            // Handle custom kelas
+            $kelas_value = trim($_POST['kelas']) ?: null;
+            if (!empty($_POST['kelas_custom'])) {
+                $kelas_value = trim($_POST['kelas_custom']);
+            }
+            
+            // 1. Insert data siswa
+            $siswa_data = [
                 'nis' => trim($_POST['nis']),
                 'nama' => trim($_POST['nama']),
                 'jenis_kelamin' => $_POST['jenis_kelamin'],
@@ -65,37 +106,94 @@ if ($_POST) {
                 'pekerjaan_ayah' => trim($_POST['pekerjaan_ayah']) ?: null,
                 'pekerjaan_ibu' => trim($_POST['pekerjaan_ibu']) ?: null,
                 'no_hp_ortu' => trim($_POST['no_hp_ortu']) ?: null,
-                'kelas' => trim($_POST['kelas']) ?: null,
-                'status' => $_POST['status'] ?? 'aktif',
-                'created_at' => date('Y-m-d H:i:s')
+                'kelas' => $kelas_value,
+                'status' => $_POST['status'] ?? 'aktif'
             ];
             
-            $columns = implode(', ', array_keys($data));
-            $placeholders = ':' . implode(', :', array_keys($data));
+            $columns = implode(', ', array_keys($siswa_data));
+            $placeholders = ':' . implode(', :', array_keys($siswa_data));
             
-            $sql = "INSERT INTO siswa ($columns) VALUES ($placeholders)";
-            $result = execute($sql, $data);
+            $sql_siswa = "INSERT INTO siswa ($columns) VALUES ($placeholders)";
+            $result_siswa = execute($sql_siswa, $siswa_data);
             
-            if ($result) {
-                $_SESSION['message'] = 'Data siswa berhasil ditambahkan';
-                $_SESSION['message_type'] = 'success';
-                header('Location: index.php');
-                exit;
-            } else {
-                throw new Exception('Gagal menyimpan data');
+            if (!$result_siswa) {
+                throw new Exception('Gagal menyimpan data siswa');
             }
+            
+            // Get the inserted siswa ID
+            $siswa_id = $pdo->lastInsertId();
+            
+            // 2. Create user account
+            $user_data = [
+                'username' => trim($_POST['nis']),
+                'password' => password_hash($auto_password, PASSWORD_DEFAULT),
+                'nama' => trim($_POST['nama']),
+                'email' => trim($_POST['email']) ?: null,
+                'role' => 'murid',
+                'status' => 'active'
+            ];
+            
+            $user_columns = implode(', ', array_keys($user_data));
+            $user_placeholders = ':' . implode(', :', array_keys($user_data));
+            
+            $sql_user = "INSERT INTO users ($user_columns) VALUES ($user_placeholders)";
+            $result_user = execute($sql_user, $user_data);
+            
+            if (!$result_user) {
+                throw new Exception('Gagal membuat akun user');
+            }
+            
+            // Commit transaction
+            $pdo->commit();
+            
+            // Set success message with login info
+            $_SESSION['message'] = "Data siswa berhasil ditambahkan dan akun user telah dibuat!<br>
+                                   <strong>Username:</strong> {$_POST['nis']}<br>
+                                   <strong>Password:</strong> $auto_password<br>
+                                   <small class='text-muted'>Siswa dapat login dengan kredensial di atas</small>";
+            $_SESSION['message_type'] = 'success';
+            
+            // REDIRECT LANGSUNG TANPA OUTPUT APAPUN
+            header('Location: index.php');
+            exit();
+            
+        } else {
+            // Rollback transaction if validation failed
+            $pdo->rollBack();
         }
+        
     } catch (Exception $e) {
+        // Rollback transaction on error
+        if ($pdo->inTransaction()) {
+            $pdo->rollBack();
+        }
         $error_message = $e->getMessage();
+        
+        // Debug: tampilkan error detail
+        error_log("Error in add.php: " . $e->getMessage());
     }
 }
 
+// Include SMS Core layout SETELAH proses form
+include '../../../core/includes/header.php';
+
 // Get available classes
-$kelas_list = getAll("SELECT DISTINCT kelas FROM siswa WHERE kelas IS NOT NULL ORDER BY kelas");
+try {
+    $kelas_list = getAll("SELECT DISTINCT kelas FROM siswa WHERE kelas IS NOT NULL ORDER BY kelas");
+} catch (Exception $e) {
+    $kelas_list = [];
+}
 ?>
 
 <!-- Custom CSS -->
 <link rel="stylesheet" href="../../../core/assets/css/forms.css">
+
+<!-- Remove preloader/loading animation -->
+<style>
+.preloader {
+    display: none !important;
+}
+</style>
 
 <div class="row">
     <div class="col-12">
@@ -111,8 +209,20 @@ $kelas_list = getAll("SELECT DISTINCT kelas FROM siswa WHERE kelas IS NOT NULL O
                 </div>
             </div>
             
-            <form method="POST" action="" id="formTambahSiswa">
+            <form method="POST" action="" id="formTambahSiswa" name="formTambahSiswa">
                 <div class="card-body">
+                    <!-- Info Alert -->
+                    <div class="alert alert-info">
+                        <h6><i class="fas fa-info-circle"></i> Informasi Pembuatan Akun:</h6>
+                        <ul class="mb-0">
+                            <li>Sistem akan otomatis membuat akun user untuk siswa</li>
+                            <li><strong>Username:</strong> NIS siswa</li>
+                            <li><strong>Password default:</strong> nama depan + 4 digit terakhir NIS</li>
+                            <li><strong>Role:</strong> murid (dapat login ke sistem)</li>
+                            <li>Password dapat diubah oleh siswa setelah login pertama</li>
+                        </ul>
+                    </div>
+
                     <!-- Error Messages -->
                     <?php if (!empty($errors)): ?>
                         <div class="alert alert-danger">
@@ -144,7 +254,9 @@ $kelas_list = getAll("SELECT DISTINCT kelas FROM siswa WHERE kelas IS NOT NULL O
                                        value="<?= htmlspecialchars($_POST['nis'] ?? '') ?>"
                                        placeholder="Masukkan NIS"
                                        required>
-                                <small class="form-text text-muted">Nomor Induk Siswa (minimal 5 karakter)</small>
+                                <small class="form-text text-muted">
+                                    <i class="fas fa-user"></i> NIS akan digunakan sebagai <strong>username</strong> untuk login
+                                </small>
                             </div>
                         </div>
                         <div class="col-md-6">
@@ -157,6 +269,9 @@ $kelas_list = getAll("SELECT DISTINCT kelas FROM siswa WHERE kelas IS NOT NULL O
                                        value="<?= htmlspecialchars($_POST['nama'] ?? '') ?>"
                                        placeholder="Masukkan nama lengkap"
                                        required>
+                                <small class="form-text text-muted">
+                                    <i class="fas fa-key"></i> Nama depan akan digunakan untuk <strong>password default</strong>
+                                </small>
                             </div>
                         </div>
                     </div>
@@ -238,6 +353,39 @@ $kelas_list = getAll("SELECT DISTINCT kelas FROM siswa WHERE kelas IS NOT NULL O
                         </div>
                     </div>
 
+                    <!-- User Account Section -->
+                    <hr>
+                    <h5><i class="fas fa-user-cog"></i> Pengaturan Akun User <small class="text-muted">(Opsional)</small></h5>
+                    
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="form-group">
+                                <label for="password">Password Custom</label>
+                                <input type="password" 
+                                       class="form-control" 
+                                       id="password" 
+                                       name="password" 
+                                       placeholder="Kosongkan untuk password otomatis">
+                                <small class="form-text text-muted">
+                                    Jika kosong, password = nama depan + 4 digit terakhir NIS
+                                </small>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="form-group">
+                                <label>Preview Password Default</label>
+                                <input type="text" 
+                                       class="form-control bg-light" 
+                                       id="password_preview" 
+                                       placeholder="Password akan tampil otomatis" 
+                                       readonly>
+                                <small class="form-text text-muted">
+                                    Preview password yang akan dibuat otomatis
+                                </small>
+                            </div>
+                        </div>
+                    </div>
+
                     <!-- Kontak -->
                     <hr>
                     <h5><i class="fas fa-address-book"></i> Informasi Kontak</h5>
@@ -273,6 +421,9 @@ $kelas_list = getAll("SELECT DISTINCT kelas FROM siswa WHERE kelas IS NOT NULL O
                                        name="email" 
                                        value="<?= htmlspecialchars($_POST['email'] ?? '') ?>"
                                        placeholder="nama@email.com">
+                                <small class="form-text text-muted">
+                                    <i class="fas fa-envelope"></i> Email akan digunakan untuk akun user (opsional)
+                                </small>
                             </div>
                         </div>
                     </div>
@@ -344,15 +495,15 @@ $kelas_list = getAll("SELECT DISTINCT kelas FROM siswa WHERE kelas IS NOT NULL O
 
                 <div class="card-footer">
                     <div class="row">
-                        <div class="col-md-6">
-                            <button type="submit" class="btn btn-primary">
-                                <i class="fas fa-save"></i> Simpan Data
+                        <div class="col-md-8">
+                            <button type="submit" class="btn btn-primary btn-lg" id="submitBtn" name="submitBtn">
+                                <i class="fas fa-save"></i> Simpan Data Siswa & Buat Akun
                             </button>
-                            <button type="reset" class="btn btn-secondary ml-2">
+                            <button type="reset" class="btn btn-secondary ml-2" id="resetBtn" name="resetBtn">
                                 <i class="fas fa-undo"></i> Reset
                             </button>
                         </div>
-                        <div class="col-md-6 text-right">
+                        <div class="col-md-4 text-right">
                             <a href="index.php" class="btn btn-default">
                                 <i class="fas fa-times"></i> Batal
                             </a>
@@ -379,6 +530,26 @@ function toggleKelasCustom() {
     }
 }
 
+// Auto generate password preview
+function updatePasswordPreview() {
+    const nama = document.getElementById('nama').value.trim();
+    const nis = document.getElementById('nis').value.trim();
+    
+    if (nama && nis && nis.length >= 4) {
+        const namaDepan = nama.split(' ')[0].toLowerCase();
+        const nisSuffix = nis.slice(-4);
+        const autoPassword = namaDepan + nisSuffix;
+        
+        document.getElementById('password_preview').value = autoPassword;
+    } else {
+        document.getElementById('password_preview').value = '';
+    }
+}
+
+// Event listeners for auto password
+document.getElementById('nama').addEventListener('input', updatePasswordPreview);
+document.getElementById('nis').addEventListener('input', updatePasswordPreview);
+
 // Handle custom class input
 document.getElementById('kelas_custom').addEventListener('input', function() {
     if (this.value) {
@@ -392,7 +563,7 @@ document.getElementById('kelas').addEventListener('change', function() {
     }
 });
 
-// Form validation
+// Form validation dan submit handling
 document.getElementById('formTambahSiswa').addEventListener('submit', function(e) {
     const nis = document.getElementById('nis').value.trim();
     const nama = document.getElementById('nama').value.trim();
@@ -416,13 +587,13 @@ document.getElementById('formTambahSiswa').addEventListener('submit', function(e
         return;
     }
     
-    // Handle custom class
-    const kelasSelect = document.getElementById('kelas').value;
-    const kelasCustom = document.getElementById('kelas_custom').value.trim();
+    // Disable submit button untuk prevent double submission
+    const submitBtn = document.getElementById('submitBtn');
+    submitBtn.disabled = true;
+    submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Menyimpan...';
     
-    if (kelasCustom) {
-        document.getElementById('kelas').innerHTML += `<option value="${kelasCustom}" selected>${kelasCustom}</option>`;
-    }
+    // Auto submit tanpa konfirmasi untuk menghindari loading
+    return true;
 });
 </script>
 

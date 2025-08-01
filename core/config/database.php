@@ -35,6 +35,13 @@ function getOne($sql, $params = []) {
     return query($sql, $params)->fetch();
 }
 
+// TAMBAHAN FUNCTION YANG DIPERLUKAN - INI YANG HILANG!
+function execute($sql, $params = []) {
+    global $pdo;
+    $stmt = $pdo->prepare($sql);
+    return $stmt->execute($params);
+}
+
 function insert($table, $data) {
     global $pdo;
     $fields = implode(',', array_keys($data));

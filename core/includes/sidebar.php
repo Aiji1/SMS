@@ -81,13 +81,40 @@ $current_path = $_SERVER['REQUEST_URI'];
                                 <p>Dashboard Master Data</p>
                             </a>
                         </li>
+                        
+                        <!-- User & Akun -->
+                        <?php if (hasRole(['admin', 'kepala_sekolah'])): ?>
+                        <li class="nav-item">
+                            <a href="<?= $base_url ?>/modules/master-data/users/" 
+                               class="nav-link <?= (strpos($current_path, '/users/') !== false) ? 'active' : '' ?>">
+                                <i class="far fa-circle nav-icon"></i>
+                                <p>User & Akun</p>
+                                <span class="badge badge-success right">New</span>
+                            </a>
+                        </li>
+                        <?php endif; ?>
+                        
+                        <!-- Data Siswa -->
                         <li class="nav-item">
                             <a href="<?= $base_url ?>/modules/master-data/siswa/" 
                                class="nav-link <?= (strpos($current_path, '/siswa/') !== false) ? 'active' : '' ?>">
                                 <i class="far fa-circle nav-icon"></i>
                                 <p>Data Siswa</p>
+                                <?php 
+                                // Count siswa aktif
+                                try {
+                                    $count_siswa = getOne("SELECT COUNT(*) as total FROM siswa WHERE status = 'aktif'");
+                                    if ($count_siswa && $count_siswa['total'] > 0) {
+                                        echo '<span class="badge badge-primary right">' . $count_siswa['total'] . '</span>';
+                                    }
+                                } catch (Exception $e) {
+                                    // Ignore error
+                                }
+                                ?>
                             </a>
                         </li>
+                        
+                        <!-- Data Guru -->
                         <li class="nav-item">
                             <a href="<?= $base_url ?>/modules/master-data/guru/" 
                                class="nav-link <?= (strpos($current_path, '/guru/') !== false) ? 'active' : '' ?>">
@@ -96,6 +123,8 @@ $current_path = $_SERVER['REQUEST_URI'];
                                 <span class="badge badge-info right">Soon</span>
                             </a>
                         </li>
+                        
+                        <!-- Data Kelas -->
                         <li class="nav-item">
                             <a href="<?= $base_url ?>/modules/master-data/kelas/" 
                                class="nav-link <?= (strpos($current_path, '/kelas/') !== false) ? 'active' : '' ?>">
@@ -263,6 +292,27 @@ $current_path = $_SERVER['REQUEST_URI'];
                 <?php endif; ?>
 
                 <!-- Divider -->
+                <li class="nav-header">QUICK ACCESS</li>
+
+                <!-- My Profile -->
+                <li class="nav-item">
+                    <a href="<?= $base_url ?>/core/profile.php" 
+                       class="nav-link <?= ($current_page == 'profile') ? 'active' : '' ?>">
+                        <i class="nav-icon fas fa-user-circle"></i>
+                        <p>My Profile</p>
+                    </a>
+                </li>
+
+                <!-- Change Password -->
+                <li class="nav-item">
+                    <a href="<?= $base_url ?>/core/change-password.php" 
+                       class="nav-link <?= ($current_page == 'change-password') ? 'active' : '' ?>">
+                        <i class="nav-icon fas fa-key"></i>
+                        <p>Change Password</p>
+                    </a>
+                </li>
+
+                <!-- Divider -->
                 <li class="nav-header">DEVELOPMENT</li>
 
                 <!-- API Documentation -->
@@ -296,11 +346,33 @@ $current_path = $_SERVER['REQUEST_URI'];
 <script>
 // System Info Modal
 function showSystemInfo() {
-    alert(`SMS School Management System
+    // Get user count by role
+    fetch('<?= $base_url ?>/core/api/system-info.php')
+        .then(response => response.json())
+        .then(data => {
+            let userInfo = '';
+            if (data.users) {
+                userInfo = `\nUsers by Role:`;
+                for (const [role, count] of Object.entries(data.users)) {
+                    userInfo += `\n- ${role}: ${count}`;
+                }
+            }
+            
+            alert(`SMS School Management System
 Version: <?= $app_version ?>
 PHP Version: <?= phpversion() ?>
 Database: MySQL
-User: <?= $user['nama'] ?> (<?= $user['role'] ?>)
+Current User: <?= $user['nama'] ?> (<?= $user['role'] ?>)
+Login Time: <?= date('d/m/Y H:i:s') ?>${userInfo}`);
+        })
+        .catch(() => {
+            // Fallback if API not available
+            alert(`SMS School Management System
+Version: <?= $app_version ?>
+PHP Version: <?= phpversion() ?>
+Database: MySQL
+Current User: <?= $user['nama'] ?> (<?= $user['role'] ?>)
 Login Time: <?= date('d/m/Y H:i:s') ?>`);
+        });
 }
 </script>
