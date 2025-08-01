@@ -4,6 +4,9 @@
  * File: modules/master-data/siswa/delete.php
  */
 
+// Include database configuration
+require_once __DIR__ . '/../../../core/config/database.php';
+
 // Check if ID is provided
 if (!isset($_GET['id']) || !is_numeric($_GET['id'])) {
     $_SESSION['message'] = 'ID siswa tidak valid';

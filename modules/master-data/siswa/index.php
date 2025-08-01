@@ -87,24 +87,37 @@ try {
                     <i class="fas fa-users mr-2"></i>Data Siswa
                     <span class="badge badge-info ml-2"><?= $total ?> siswa</span>
                 </h3>
+                <!-- Ganti bagian card-tools dengan ini: -->
                 <div class="card-tools">
-                    <div class="btn-group">
+                    <div class="btn-group" role="group">
+                        <!-- Tombol Tambah Siswa -->
                         <a href="add.php" class="btn btn-primary">
                             <i class="fas fa-plus"></i> Tambah Siswa
                         </a>
-                        <button type="button" class="btn btn-success dropdown-toggle dropdown-toggle-split" data-toggle="dropdown">
-                            <span class="sr-only">Toggle Dropdown</span>
-                        </button>
-                        <div class="dropdown-menu">
-                            <a class="dropdown-item" href="import.php">
-                                <i class="fas fa-upload"></i> Import Excel
-                            </a>
-                            <a class="dropdown-item" href="export.php?type=excel">
-                                <i class="fas fa-download"></i> Export Excel
-                            </a>
-                            <a class="dropdown-item" href="export.php?type=pdf">
-                                <i class="fas fa-file-pdf"></i> Export PDF
-                            </a>
+                        
+                        <!-- Tombol Import -->
+                        <a href="import.php" class="btn btn-success">
+                            <i class="fas fa-upload"></i> Import
+                        </a>
+                        
+                        <!-- Tombol Template Import -->
+                        <a href="template_import.php" class="btn btn-info">
+                            <i class="fas fa-file-download"></i> Template
+                        </a>
+                        
+                        <!-- Dropdown Export -->
+                        <div class="btn-group" role="group">
+                            <button type="button" class="btn btn-warning dropdown-toggle" data-toggle="dropdown">
+                                <i class="fas fa-download"></i> Export
+                            </button>
+                            <div class="dropdown-menu">
+                                <a class="dropdown-item" href="export.php?type=excel">
+                                    <i class="fas fa-file-excel"></i> Excel
+                                </a>
+                                <a class="dropdown-item" href="export.php?type=pdf">
+                                    <i class="fas fa-file-pdf"></i> PDF
+                                </a>
+                            </div>
                         </div>
                     </div>
                 </div>
