@@ -87,7 +87,7 @@ try {
                     <i class="fas fa-users mr-2"></i>Data Siswa
                     <span class="badge badge-info ml-2"><?= $total ?> siswa</span>
                 </h3>
-                <!-- Ganti bagian card-tools dengan ini: -->
+                <!-- Tombol Aksi -->
                 <div class="card-tools">
                     <div class="btn-group" role="group">
                         <!-- Tombol Tambah Siswa -->
@@ -95,14 +95,18 @@ try {
                             <i class="fas fa-plus"></i> Tambah Siswa
                         </a>
                         
-                        <!-- Tombol Import -->
-                        <a href="import.php" class="btn btn-success">
+                        <!-- Tombol Import - FIXED: Added correct ID and data attributes -->
+                        <button type="button" 
+                                class="btn btn-success" 
+                                id="importButton"
+                                data-toggle="modal" 
+                                data-target="#importModal">
                             <i class="fas fa-upload"></i> Import
-                        </a>
+                        </button>
                         
                         <!-- Tombol Template Import -->
                         <a href="template_import.php" class="btn btn-info">
-                            <i class="fas fa-file-download"></i> Template
+                            <i class="fas fa-file-download"></i> Template Excel
                         </a>
                         
                         <!-- Dropdown Export -->
@@ -374,9 +378,64 @@ try {
     </div>
 </div>
 
-<!-- Custom JavaScript -->
+<!-- Include Import Modal BEFORE JavaScript -->
+<?php 
+// Include modal only if file exists
+if (file_exists('import.php')) {
+    include 'import.php'; 
+} else {
+    echo '<!-- Import modal file not found -->';
+}
+?>
+
+<!-- Custom JavaScript - SIMPLIFIED AND FIXED -->
 <script>
 let bulkMode = false;
+
+// Simple initialization when document is ready
+document.addEventListener('DOMContentLoaded', function() {
+    console.log('Page loaded');
+    
+    // Setup bulk actions
+    setupBulkActions();
+    
+    // Simple import button handler
+    const importButton = document.getElementById('importButton');
+    if (importButton) {
+        console.log('Import button found, adding click handler');
+        
+        // Remove any existing click handlers
+        importButton.onclick = null;
+        
+        // Add simple click handler
+        importButton.addEventListener('click', function(e) {
+            console.log('Import button clicked');
+            // Let Bootstrap handle the modal
+        });
+    } else {
+        console.error('Import button not found!');
+    }
+    
+    // Debug modal
+    const modal = document.getElementById('importModal');
+    console.log('Import modal found:', modal !== null);
+});
+
+function setupBulkActions() {
+    const selectAllCheckbox = document.getElementById('selectAll');
+    if (selectAllCheckbox) {
+        selectAllCheckbox.addEventListener('change', function() {
+            const checkboxes = document.querySelectorAll('.row-checkbox');
+            checkboxes.forEach(cb => cb.checked = this.checked);
+            updateSelectedCount();
+        });
+    }
+
+    // Update selected count for individual checkboxes
+    document.querySelectorAll('.row-checkbox').forEach(checkbox => {
+        checkbox.addEventListener('change', updateSelectedCount);
+    });
+}
 
 function toggleBulkActions() {
     bulkMode = !bulkMode;
@@ -386,32 +445,24 @@ function toggleBulkActions() {
     
     if (bulkMode) {
         bulkElements.forEach(el => el.style.display = 'table-cell');
-        bulkActions.style.display = 'block';
+        if (bulkActions) bulkActions.style.display = 'block';
     } else {
         bulkElements.forEach(el => el.style.display = 'none');
-        bulkActions.style.display = 'none';
+        if (bulkActions) bulkActions.style.display = 'none';
         // Uncheck all
         document.querySelectorAll('.row-checkbox').forEach(cb => cb.checked = false);
-        document.getElementById('selectAll').checked = false;
+        const selectAll = document.getElementById('selectAll');
+        if (selectAll) selectAll.checked = false;
         updateSelectedCount();
     }
 }
 
-// Select All functionality
-document.getElementById('selectAll').addEventListener('change', function() {
-    const checkboxes = document.querySelectorAll('.row-checkbox');
-    checkboxes.forEach(cb => cb.checked = this.checked);
-    updateSelectedCount();
-});
-
-// Update selected count
-document.querySelectorAll('.row-checkbox').forEach(checkbox => {
-    checkbox.addEventListener('change', updateSelectedCount);
-});
-
 function updateSelectedCount() {
     const selected = document.querySelectorAll('.row-checkbox:checked').length;
-    document.getElementById('selectedCount').textContent = selected;
+    const countElement = document.getElementById('selectedCount');
+    if (countElement) {
+        countElement.textContent = selected;
+    }
 }
 
 function bulkEditKelas() {
@@ -423,7 +474,6 @@ function bulkEditKelas() {
     
     const newKelas = prompt('Masukkan kelas baru untuk ' + selected.length + ' siswa:');
     if (newKelas) {
-        // Redirect to bulk edit process
         const form = document.createElement('form');
         form.method = 'POST';
         form.action = 'process.php';
@@ -447,7 +497,6 @@ function bulkDelete() {
     }
     
     if (confirm(`Apakah Anda yakin ingin menghapus ${selected.length} siswa yang dipilih?`)) {
-        // Redirect to bulk delete process
         const form = document.createElement('form');
         form.method = 'POST';
         form.action = 'process.php';
